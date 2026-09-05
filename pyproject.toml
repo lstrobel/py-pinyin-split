@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27.0"]
+requires = ["hatchling>=1.32.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -10,7 +10,7 @@ name = "py-pinyin-split"
 dynamic = ["version"]
 description = 'Library for splitting Hanyu Pinyin phrases into all valid syllable combinations'
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE.txt"]
 keywords = ['chinese', 'pinyin']
@@ -22,8 +22,6 @@ maintainers = [{ name = "lstrobel", email = "mail@lstrobel.com" }]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -36,13 +34,13 @@ classifiers = [
     'Topic :: Text Processing :: Linguistic',
     'Topic :: Utilities',
 ]
-dependencies = ["marisa-trie>=1.2.1", "nltk>=3.9.1"]
+dependencies = ["marisa-trie>=1.4.1", "nltk>=3.10.3"]
 
 [dependency-groups]
 dev = [
-    "mypy>=1.13.0",
-    "pytest-benchmark>=4.0.0",
-    "pytest>=8.3.4",
+    "mypy>=2.3.1",
+    "pytest-benchmark>=5.3.0",
+    "pytest>=9.1.1",
     "ruff>=0.16.5",
 ]
 

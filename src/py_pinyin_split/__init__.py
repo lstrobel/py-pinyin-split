@@ -4,7 +4,7 @@
 
 import re
 import unicodedata
-from typing import Iterator, List, Optional, Tuple
+from collections.abc import Iterator
 
 import marisa_trie  # type: ignore
 from nltk.tokenize import RegexpTokenizer  # type: ignore
@@ -603,7 +603,7 @@ class PinyinTokenizer(TokenizerI):
         self.trie = marisa_trie.Trie(trie_contents)
         self._max_syllable_length = max(len(variant) for variant in trie_contents)
 
-    def _get_best_split(self, text: str) -> Optional[List[Tuple[int, int]]]:
+    def _get_best_split(self, text: str) -> list[tuple[int, int]] | None:
         """Find the best local spans by syllable count, vowel starts, and frequency."""
         normalized_parts = []
         original_offsets = [0]
@@ -613,7 +613,7 @@ class PinyinTokenizer(TokenizerI):
             original_offsets.extend([end] * len(normalized))
         text = "".join(normalized_parts)
 
-        scores: List[Optional[Tuple[int, int, int]]] = [None] * (len(text) + 1)
+        scores: list[tuple[int, int, int] | None] = [None] * (len(text) + 1)
         next_positions = [0] * len(text)
         scores[-1] = (0, 0, 0)
 
@@ -649,7 +649,7 @@ class PinyinTokenizer(TokenizerI):
             start = end
         return spans
 
-    def span_tokenize(self, s: str) -> Iterator[Tuple[int, int]]:
+    def span_tokenize(self, s: str) -> Iterator[tuple[int, int]]:
         """Yield offsets into the original text, preserving Unicode composition."""
         starting_spans = self.preprocess_tokenizer.span_tokenize(s)
 
@@ -669,5 +669,5 @@ class PinyinTokenizer(TokenizerI):
 
         yield from final_spans
 
-    def tokenize(self, s: str) -> List[str]:
+    def tokenize(self, s: str) -> list[str]:
         return [s[start:end] for start, end in self.span_tokenize(s)]

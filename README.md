@@ -9,10 +9,16 @@ PyPI: https://pypi.org/project/py-pinyin-split/
 
 ## Installation
 
-Requires Python 3.8 or newer.
+Version 6 requires Python 3.10 or newer.
 
 ```bash
 pip install py-pinyin-split
+```
+
+Python 3.8 and 3.9 users should stay on the 5.x series:
+
+```bash
+pip install "py-pinyin-split<6"
 ```
 
 ## Usage
@@ -60,9 +66,7 @@ tokenizer.tokenize("duang")  # ['duang']
 
 Use a current version of [uv](https://docs.astral.sh/uv/) to install the locked
 development environment. The default development interpreter is Python 3.14;
-CI covers Python 3.8 through 3.14, plus macOS and Windows on Python 3.14.
-The lockfile selects newer dependencies where supported and retains compatible
-versions for older Python interpreters.
+CI covers Python 3.10 through 3.14, plus macOS and Windows on Python 3.14.
 
 ```bash
 uv sync --locked
