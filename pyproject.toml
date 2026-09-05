@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -10,8 +10,9 @@ name = "py-pinyin-split"
 dynamic = ["version"]
 description = 'Library for splitting Hanyu Pinyin phrases into all valid syllable combinations'
 readme = "README.md"
-requires-python = ">=3.8,<3.13"
+requires-python = ">=3.8"
 license = "MIT"
+license-files = ["LICENSE.txt"]
 keywords = ['chinese', 'pinyin']
 authors = [
     { name = "lstrobel", email = "mail@lstrobel.com" },
@@ -26,22 +27,23 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
-    'License :: OSI Approved :: MIT License',
     'Intended Audience :: Developers',
     'Operating System :: OS Independent',
     'Topic :: Text Processing :: Linguistic',
     'Topic :: Utilities',
 ]
-dependencies = ["marisa-trie>=1.2.1", "nltk==3.9.1"]
+dependencies = ["marisa-trie>=1.2.1", "nltk>=3.9.1"]
 
 [dependency-groups]
 dev = [
     "mypy>=1.13.0",
     "pytest-benchmark>=4.0.0",
     "pytest>=8.3.4",
-    "ruff>=0.7.4",
+    "ruff>=0.16.5",
 ]
 
 [project.urls]
@@ -49,6 +51,8 @@ Documentation = "https://github.com/lstrobel/py-pinyin-split#readme"
 Issues = "https://github.com/lstrobel/py-pinyin-split/issues"
 Source = "https://github.com/lstrobel/py-pinyin-split"
 
+[tool.uv]
+exclude-newer = "3 days"
 
 [tool.ruff.format]
 docstring-code-format = true
