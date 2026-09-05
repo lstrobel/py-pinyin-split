@@ -3,17 +3,19 @@
 # SPDX-License-Identifier: MIT
 
 import re
-from typing import Iterator, List, Tuple
+import unicodedata
+from typing import Iterator, List, Optional, Tuple
 
 import marisa_trie  # type: ignore
-from nltk.tokenize import WordPunctTokenizer  # type: ignore
+from nltk.tokenize import RegexpTokenizer  # type: ignore
 from nltk.tokenize.api import TokenizerI  # type: ignore
 
 
 class PinyinTokenizer(TokenizerI):
     """
     Splits Hanyu Pinyin words on syllable boundaries.
-    Cannot handle punctuation or whitespace.
+    Preserves punctuation and original character spans, ignoring whitespace.
+    Supports precomposed and decomposed Unicode tone marks.
 
     Args:
         include_nonstandard: If True, includes rare/non-standard syllables in the valid
@@ -126,14 +128,14 @@ class PinyinTokenizer(TokenizerI):
     # fmt: on
 
     VOWEL_TONE_VARIANTS = {
-        "a": "āáǎà",
-        "e": "ēéěè",
-        "ê": "ê̄ếê̌ề",
-        "i": "īíǐì",
-        "o": "ōóǒò",
-        "u": "ūúǔù",
-        "ü": "ǖǘǚǜ",
-        "v": "v̄v́v̌v̀",  # ü alternative
+        "a": ("ā", "á", "ǎ", "à"),
+        "e": ("ē", "é", "ě", "è"),
+        "ê": ("ê\u0304", "ế", "ê\u030c", "ề"),
+        "i": ("ī", "í", "ǐ", "ì"),
+        "o": ("ō", "ó", "ǒ", "ò"),
+        "u": ("ū", "ú", "ǔ", "ù"),
+        "ü": ("ǖ", "ǘ", "ǚ", "ǜ"),
+        "v": ("v\u0304", "v\u0301", "v\u030c", "v\u0300"),  # ü alternative
     }
 
     # https://lingua.mtsu.edu/chinese-computing/phonology/syllable.php
@@ -539,7 +541,7 @@ class PinyinTokenizer(TokenizerI):
         "zuo": "893830",
     }
 
-    NON_ALPHABETIC_REGEX = re.compile(r"[^\w\s]+")
+    NON_ALPHABETIC_REGEX = re.compile(r"[^\w\s\u0300-\u036f]+")
 
     def _get_tone_variants(self, syllable: str):
         """
@@ -567,141 +569,103 @@ class PinyinTokenizer(TokenizerI):
             tone_vowel = vowels[-1]
 
         # Generate variants with each tone mark
-        for i in range(4):
-            variant = syllable.replace(
-                tone_vowel, self.VOWEL_TONE_VARIANTS[tone_vowel][i]
-            )
+        for toned_vowel in self.VOWEL_TONE_VARIANTS[tone_vowel]:
+            variant = syllable.replace(tone_vowel, toned_vowel)
             variants.append(variant)
 
         return variants
 
     def _remove_tone(self, syllable: str):
         """Remove tone marks from a pinyin syllable, returning the base form."""
-        result = syllable
+        result = unicodedata.normalize("NFC", syllable)
         for base_vowel, toned_vowels in self.VOWEL_TONE_VARIANTS.items():
             for toned in toned_vowels:
                 result = result.replace(toned, base_vowel)
         return result
 
     def __init__(self, include_nonstandard=False):
-        self.preprocess_tokenizer = WordPunctTokenizer()
+        self.preprocess_tokenizer = RegexpTokenizer(
+            r"[\w\u0300-\u036f]+|" + self.NON_ALPHABETIC_REGEX.pattern
+        )
 
         trie_contents = []
 
         # Add standard syllables
         for syllable in self.STANDARD_SYLLABLES:
             for variant in self._get_tone_variants(syllable):
-                trie_contents.append(variant)
+                trie_contents.append(unicodedata.normalize("NFD", variant))
 
         if include_nonstandard:
             for syllable in self.NON_STANDARD_SYLLABLES:
                 for variant in self._get_tone_variants(syllable):
-                    trie_contents.append(variant)
+                    trie_contents.append(unicodedata.normalize("NFD", variant))
 
         self.trie = marisa_trie.Trie(trie_contents)
+        self._max_syllable_length = max(len(variant) for variant in trie_contents)
 
-    def _get_string_possibilites(self, s) -> List[List[Tuple[int, int]]]:
-        """
-        For a given string, return all possible valid syllable spans of that string,
-        indexed local to the string
-        """
-        candidates = []
+    def _get_best_split(self, text: str) -> Optional[List[Tuple[int, int]]]:
+        """Find the best local spans by syllable count, vowel starts, and frequency."""
+        normalized_parts = []
+        original_offsets = [0]
+        for end, character in enumerate(text, 1):
+            normalized = unicodedata.normalize("NFD", character.lower())
+            normalized_parts.append(normalized)
+            original_offsets.extend([end] * len(normalized))
+        text = "".join(normalized_parts)
 
-        # Generate all possible splits starting from the beginning
-        to_process: List[Tuple[int, List[int]]] = [(0, [])]
-        while to_process:
-            # Get next position and accumulated split indices to process
-            start_pos, split_indices = to_process.pop()
-            remaining_s = s[start_pos:].lower()
+        scores: List[Optional[Tuple[int, int, int]]] = [None] * (len(text) + 1)
+        next_positions = [0] * len(text)
+        scores[-1] = (0, 0, 0)
 
-            # Find all valid pinyin syllables that could start at this position
-            prefix_matches = self.trie.prefixes(remaining_s)
+        for start in range(len(text) - 1, -1, -1):
+            remaining = text[start : start + self._max_syllable_length]
+            best_score = None
+            for match in reversed(self.trie.prefixes(remaining)):
+                end = start + len(match)
+                suffix_score = scores[end]
+                if suffix_score is None:
+                    continue
 
-            # For each possible syllable length
-            for match in prefix_matches:
-                # Create a new split point list with this syllable's endpoint
-                new_splits = split_indices.copy()
-                new_splits.append(start_pos + len(match))
+                syllable = self._remove_tone(match)
+                score = (
+                    suffix_score[0] + 1,
+                    suffix_score[1] + int(syllable[0] in self.VOWEL_TONE_VARIANTS),
+                    suffix_score[2] - int(self.SYLLABLE_FREQUENCIES.get(syllable, "0")),
+                )
+                if best_score is None or score < best_score:
+                    best_score = score
+                    next_positions[start] = end
 
-                if start_pos + len(match) < len(s):
-                    # If we haven't reached the end,
-                    # continue processing from end of this syllable
-                    to_process.append((start_pos + len(match), new_splits))
-                else:
-                    # We've reached the end - construct the output span tuples
-                    spans = []
-                    prev = 0
-                    for pos in new_splits:
-                        spans.append((prev, pos))
-                        prev = pos
-                    candidates.append(spans)
+            scores[start] = best_score
 
-        return candidates
+        if scores[0] is None:
+            return None
+
+        spans = []
+        start = 0
+        while start < len(text):
+            end = next_positions[start]
+            spans.append((original_offsets[start], original_offsets[end]))
+            start = end
+        return spans
 
     def span_tokenize(self, s: str) -> Iterator[Tuple[int, int]]:
-        # Start by splitting into sub-spans to examine
+        """Yield offsets into the original text, preserving Unicode composition."""
         starting_spans = self.preprocess_tokenizer.span_tokenize(s)
 
         final_spans = []
         for start, end in starting_spans:
-            subspan_possibilities = self._get_string_possibilites(s[start:end])
-            if not subspan_possibilities:
-                # We were passed a subspan that wasnt valid pinyin
-                # If it is a non-alphabetic span, then we return as-is
-                if self.NON_ALPHABETIC_REGEX.match(s[start:end]):
-                    final_spans.append((start, end))
-                    continue
-                else:
-                    raise ValueError(f"Invalid pinyin at substring: {s[start:end]}")
+            original = s[start:end]
+            if self.NON_ALPHABETIC_REGEX.fullmatch(original):
+                final_spans.append((start, end))
+                continue
 
-            # Find the shortest candidate(s) for this span
-            min_length = min(len(splits) for splits in subspan_possibilities)
-            shortest = [c for c in subspan_possibilities if len(c) == min_length]
+            chosen = self._get_best_split(original)
+            if chosen is None:
+                raise ValueError(f"Invalid pinyin at substring: {original}")
 
-            if len(shortest) > 1:  # We need to break a tie
-                # First prefer splits with fewer syllables starting with vowels
-                min_vowel_starts = float("inf")
-                fewest_vowels = []
-
-                for split in shortest:
-                    syllables = [
-                        self._remove_tone(s[start:end].lower()) for start, end in split
-                    ]
-                    vowel_starts = sum(
-                        1 for syl in syllables if syl[0] in self.VOWEL_TONE_VARIANTS
-                    )
-
-                    if vowel_starts < min_vowel_starts:
-                        min_vowel_starts = vowel_starts
-                        fewest_vowels = [split]
-                    elif vowel_starts == min_vowel_starts:
-                        fewest_vowels.append(split)
-
-                if len(fewest_vowels) > 1:
-                    # Use syllable frequencies as final tiebreaker
-                    max_freq = float("-inf")
-                    best_split = None
-
-                    for split in fewest_vowels:
-                        total_freq = sum(
-                            int(self.SYLLABLE_FREQUENCIES.get(syl, "0"))
-                            for syl in syllables
-                        )
-
-                        if total_freq > max_freq:
-                            max_freq = total_freq
-                            best_split = split
-
-                    assert best_split is not None
-                    chosen = best_split
-                else:
-                    chosen = fewest_vowels[0]
-            else:
-                chosen = shortest[0]
-
-            for subspan in chosen:
-                # Convert from local span indices to full string indices
-                final_spans.append((start + subspan[0], start + subspan[1]))
+            for local_start, local_end in chosen:
+                final_spans.append((start + local_start, start + local_end))
 
         yield from final_spans
 
